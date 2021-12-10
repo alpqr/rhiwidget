@@ -10,7 +10,7 @@ class QRhiWidgetPrivate : public QWidgetPrivate
 {
     Q_DECLARE_PUBLIC(QRhiWidget)
 public:
-    QRhiTexture *texture() const override { return t; }
+    QRhiTexture *texture() const override { return textureInvalid ? nullptr : t; }
     QPlatformBackingStoreRhiConfig rhiConfig() const override;
 
     void ensureRhi();
@@ -23,6 +23,7 @@ public:
     QRhiTexture::Format format = QRhiTexture::RGBA8;
     QSize explicitSize;
     QBackingStoreRhiSupport::RhiRenderResources offscreenRhiResources;
+    bool textureInvalid = false;
 };
 
 #endif

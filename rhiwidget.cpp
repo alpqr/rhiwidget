@@ -122,6 +122,26 @@ void QRhiWidget::paintEvent(QPaintEvent *)
     d->rhi->endOffscreenFrame();
 }
 
+/*!
+  \reimp
+*/
+bool QRhiWidget::event(QEvent *e)
+{
+    Q_D(QRhiWidget);
+    switch (e->type()) {
+    case QEvent::WindowChangeInternal:
+        // the QRhi will almost certainly change, prevent texture() from
+        // returning the existing QRhiTexture in the meantime
+        d->textureInvalid = true;
+        break;
+    case QEvent::Show:
+        if (isVisible())
+            d->sendPaintEvent(QRect(QPoint(0, 0), size()));
+        break;
+    }
+    return QWidget::event(e);
+}
+
 QPlatformBackingStoreRhiConfig QRhiWidgetPrivate::rhiConfig() const
 {
     return config;
@@ -146,13 +166,14 @@ void QRhiWidgetPrivate::ensureRhi()
     }
 
     if (currentRhi && rhi && rhi != currentRhi) {
+        // the texture belongs to the old rhi, drop it, this will also lead to
+        // initialize() being called again
+        delete t;
+        t = nullptr;
         // if previously we created our own but now get a QRhi from the
         // top-level, then drop what we have and start using the top-level's
-        if (rhi == offscreenRhiResources.rhi) {
-            delete t;
-            t = nullptr;
+        if (rhi == offscreenRhiResources.rhi)
             offscreenRhiResources.reset();
-        }
     }
 
     rhi = currentRhi;
@@ -183,6 +204,8 @@ void QRhiWidgetPrivate::ensureTexture()
         if (!t->create())
             qWarning("Failed to rebuild texture for QRhiWidget after resizing");
     }
+
+    textureInvalid = false;
 }
 
 /*!

@@ -47,6 +47,7 @@ Q_SIGNALS:
 protected:
     void resizeEvent(QResizeEvent *e) override;
     void paintEvent(QPaintEvent *e) override;
+    bool event(QEvent *e) override;
 };
 
 #endif

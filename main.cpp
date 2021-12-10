@@ -55,6 +55,20 @@ int main(int argc, char **argv)
             rw->setExplicitSize(QSize());
     });
     btnLayout->addWidget(cbExplicitSize);
+    QPushButton *btnMakeWindow = new QPushButton(QLatin1String("Make top-level window"));
+    QObject::connect(btnMakeWindow, &QPushButton::clicked, btnMakeWindow, [rw, btnMakeWindow, layout] {
+        if (rw->parentWidget()) {
+            rw->setParent(nullptr);
+            rw->setAttribute(Qt::WA_DeleteOnClose, true);
+            rw->show();
+            btnMakeWindow->setText(QLatin1String("Make child widget"));
+        } else {
+            rw->setAttribute(Qt::WA_DeleteOnClose, false);
+            layout->addWidget(rw);
+            btnMakeWindow->setText(QLatin1String("Make top-level window"));
+        }
+    });
+    btnLayout->addWidget(btnMakeWindow);
 
     layout->addWidget(edit);
     QHBoxLayout *sliderLayout = new QHBoxLayout;
