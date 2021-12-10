@@ -5,19 +5,31 @@
 #include <private/qwidgetrepaintmanager_p.h>
 
 /*!
-  \class QRhiWidget
-  \inmodule QtWidgets
-  \since 6.x
+    \class QRhiWidget
+    \inmodule QtWidgets
+    \since 6.x
 
-  \brief The QRhiWidget class is a widget for rendering 3D graphics via an
-  accelerated grapics API, such as Vulkan, Metal, or Direct 3D.
+    \brief The QRhiWidget class is a widget for rendering 3D graphics via an
+    accelerated grapics API, such as Vulkan, Metal, or Direct 3D.
 
-  QRhiWidget provides functionality for displaying 3D content rendered through
-  the QRhi APIs within a QWidget-based application.
+    QRhiWidget provides functionality for displaying 3D content rendered through
+    the QRhi APIs within a QWidget-based application.
 
-  QRhiWidget is expected to be subclassed. Subclasses should reimplement the
-  virtual functions initialize() and render(). In addition, they should
-  configure the widget by calling setApi().
+    QRhiWidget is expected to be subclassed. To render into the 2D texture that
+    is implicitly created and managed by the QRhiWidget, subclasses should
+    reimplement the virtual functions initialize() and render().
+
+    The size of the texture will by default adapt to the size of the item. If a
+    fixed size is preferred, set an explicit size specified in pixels by
+    calling setExplicitSize().
+
+    The QRhi for the widget's top-level window is configured to use a platform
+    specific backend and graphics API by default: Metal on macOS and iOS,
+    Direct 3D 11 on Windows, OpenGL otherwise. Call setApi() to override this.
+
+    \note A single widget window can only use one QRhi backend, and so graphics
+    API. If two QRhiWidget or QQuickWidget widgets in the window's widget
+    hierarchy request different APIs, only one of them will function correctly.
  */
 
 /*!
@@ -31,6 +43,15 @@ QRhiWidget::QRhiWidget(QWidget *parent, Qt::WindowFlags f)
         qWarning("QRhiWidget: QRhi is not supported on this platform.");
     else
         d->setRenderToTexture();
+
+    d->config.setEnabled(true);
+#if defined(Q_OS_DARWIN)
+    d->config.setApi(QPlatformBackingStoreRhiConfig::Metal);
+#elif defined(Q_OS_WIN)
+    d->config.setApi(QPlatformBackingStoreRhiConfig::D3D11);
+#else
+    d->config.setApi(QPlatformBackingStoreRhiConfig::OpenGL);
+#endif
 }
 
 /*!
@@ -62,18 +83,6 @@ void QRhiWidget::resizeEvent(QResizeEvent *e)
     }
     d->noSize = false;
 
-    d->ensureRhi();
-    if (!d->rhi) {
-        qWarning("QRhiWidget: No QRhi");
-        return;
-    }
-
-    d->ensureTexture();
-    if (!d->t)
-        return;
-
-    initialize(d->rhi, d->t);
-
     d->sendPaintEvent(QRect(QPoint(0, 0), size()));
 }
 
@@ -90,12 +99,26 @@ void QRhiWidget::resizeEvent(QResizeEvent *e)
 void QRhiWidget::paintEvent(QPaintEvent *)
 {
     Q_D(QRhiWidget);
-    if (updatesEnabled() && d->rhi && d->t && !d->noSize) {
-        QRhiCommandBuffer *cb = nullptr;
-        d->rhi->beginOffscreenFrame(&cb);
-        render(cb);
-        d->rhi->endOffscreenFrame();
+    if (!updatesEnabled() || d->noSize)
+        return;
+
+    d->ensureRhi();
+    if (!d->rhi) {
+        qWarning("QRhiWidget: No QRhi");
+        return;
     }
+
+    const QSize prevSize = d->t ? d->t->pixelSize() : QSize();
+    d->ensureTexture();
+    if (!d->t)
+        return;
+    if (d->t->pixelSize() != prevSize)
+        initialize(d->rhi, d->t);
+
+    QRhiCommandBuffer *cb = nullptr;
+    d->rhi->beginOffscreenFrame(&cb);
+    render(cb);
+    d->rhi->endOffscreenFrame();
 }
 
 QPlatformBackingStoreRhiConfig QRhiWidgetPrivate::rhiConfig() const
@@ -127,7 +150,11 @@ void QRhiWidgetPrivate::ensureRhi()
 void QRhiWidgetPrivate::ensureTexture()
 {
     Q_Q(QRhiWidget);
-    const QSize newSize = q->size() * q->devicePixelRatio();
+
+    QSize newSize = explicitSize;
+    if (newSize.isEmpty())
+        newSize = q->size() * q->devicePixelRatio();
+
     if (!t) {
         if (!rhi->isTextureFormatSupported(format))
             qWarning("QRhiWidget: The requested texture format is not supported by the graphics API implementation");
@@ -139,6 +166,7 @@ void QRhiWidgetPrivate::ensureTexture()
             return;
         }
     }
+
     if (t->pixelSize() != newSize) {
         t->setPixelSize(newSize);
         if (!t->create())
@@ -147,19 +175,48 @@ void QRhiWidgetPrivate::ensureTexture()
 }
 
 /*!
+    \return the currently set graphics API (QRhi backend).
+
+    \sa setApi()
+ */
+QRhiWidget::Api QRhiWidget::api() const
+{
+    Q_D(const QRhiWidget);
+    switch (d->config.api()) {
+    case QPlatformBackingStoreRhiConfig::OpenGL:
+        return OpenGL;
+    case QPlatformBackingStoreRhiConfig::Metal:
+        return Metal;
+    case QPlatformBackingStoreRhiConfig::Vulkan:
+        return Vulkan;
+    case QPlatformBackingStoreRhiConfig::D3D11:
+        return D3D11;
+    default:
+        return Null;
+    }
+}
+
+/*!
     Sets the graphics API and QRhi backend to use to \a api.
+
+    The default value depends on the platform: Metal on macOS and iOS, Direct
+    3D 11 on Windows, OpenGL otherwise.
 
     \note This function must be called early enough, before the widget is added
     to a widget hierarchy and displayed on screen. For example, aim to call the
     function for the subclass constructor. If called too late, the function
     will have no effect.
 
-    \sa setTextureFormat(), setDebugLayer()
+    The \a api can only be set once for the widget and its top-level window,
+    once it is done and takes effect, the window can only use that API and QRhi
+    backend to render. Attempting to set another value, or to add another
+    QRhiWidget with a different \a api will not function as expected.
+
+    \sa setTextureFormat(), setDebugLayer(), api()
  */
 void QRhiWidget::setApi(Api api)
 {
     Q_D(QRhiWidget);
-    d->config.setEnabled(true);
     switch (api) {
     case OpenGL:
         d->config.setApi(QPlatformBackingStoreRhiConfig::OpenGL);
@@ -180,6 +237,18 @@ void QRhiWidget::setApi(Api api)
 }
 
 /*!
+    \return true if a debug or validation layer will be requested if applicable
+    to the graphics API in use.
+
+    \sa setDebugLayer()
+ */
+bool QRhiWidget::isDebugLayerEnabled() const
+{
+    Q_D(const QRhiWidget);
+    return d->config.isDebugLayerEnabled();
+}
+
+/*!
     Requests the debug or validation layer of the underlying graphics API
     when \a enable is true.
 
@@ -190,7 +259,9 @@ void QRhiWidget::setApi(Api api)
     function for the subclass constructor. If called too late, the function
     will have no effect.
 
-    \sa setApi()
+    By default this is disabled.
+
+    \sa setApi(), isDebugLayerEnabled()
  */
 void QRhiWidget::setDebugLayer(bool enable)
 {
@@ -199,21 +270,67 @@ void QRhiWidget::setDebugLayer(bool enable)
 }
 
 /*!
+    \return the currently set texture format.
+
+    The default value is QRhiTexture::RGBA8.
+
+    \sa setTextureFormat()
+ */
+QRhiTexture::Format QRhiWidget::textureFormat() const
+{
+    Q_D(const QRhiWidget);
+    return d->format;
+}
+
+/*!
     Sets the associated texture's \a format.
 
-    The default is QRhiTexture::RGBA8.
+    The default value is QRhiTexture::RGBA8. Only formats that are reported as
+    supported from QRhi::isTextureFormatSupported() should be specified,
+    rendering will not be functional otherwise.
 
     \note This function must be called early enough, before the widget is added
     to a widget hierarchy and displayed on screen. For example, aim to call the
     function for the subclass constructor. If called too late, the function
     will have no effect.
 
-    \sa setApi()
+    \sa setApi(), textureFormat()
  */
 void QRhiWidget::setTextureFormat(QRhiTexture::Format format)
 {
     Q_D(QRhiWidget);
     d->format = format;
+}
+
+/*!
+    \return the currently set texture size, in pixels.
+
+    The default value is a null (default constructed) QSize, which means that
+    the texture follows the widget's size.
+
+    \sa setExplicitSize()
+ */
+QSize QRhiWidget::explicitSize() const
+{
+    Q_D(const QRhiWidget);
+    return d->explicitSize;
+}
+
+/*!
+    Sets a \a pixelSize as the size of the QRhiWidget's associated texture.
+
+    By default the value is a null QSize.
+
+    A null or empty QSize means that the texture's size follows the
+    QRhiWidget's size. (texture size = widget size * device pixel ratio).
+
+    \sa explicitSize()
+ */
+void QRhiWidget::setExplicitSize(const QSize &pixelSize)
+{
+    Q_D(QRhiWidget);
+    d->explicitSize = pixelSize;
+    update();
 }
 
 /*!
@@ -230,6 +347,10 @@ void QRhiWidget::setTextureFormat(QRhiTexture::Format format)
     QRhiWidget does not know the renderer's approach to blending and
     composition, and therefore cannot know if the output has alpha
     premultiplied.
+
+    This function can also be called when the QRhiWidget is not added to a
+    widget hierarchy belonging to an on-screen top-level window. This allows
+    generating an image from a 3D rendering off-screen.
 
     \sa setTextureFormat()
  */

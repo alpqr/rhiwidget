@@ -8,13 +8,6 @@ static const QSize CUBE_TEX_SIZE(512, 512);
 ExampleRhiWidget::ExampleRhiWidget(QWidget *parent, Qt::WindowFlags f)
     : QRhiWidget(parent, f)
 {
-#if defined(Q_OS_DARWIN)
-    setApi(Metal);
-#elif defined(Q_OS_WIN)
-    setApi(D3D11);
-#else
-    setApi(Vulkan);
-#endif
     setDebugLayer(true);
 }
 

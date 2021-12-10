@@ -21,9 +21,17 @@ public:
         Null
     };
 
+    Api api() const;
     void setApi(Api api);
+
+    bool isDebugLayerEnabled() const;
     void setDebugLayer(bool enable);
+
+    QRhiTexture::Format textureFormat() const;
     void setTextureFormat(QRhiTexture::Format format);
+
+    QSize explicitSize() const;
+    void setExplicitSize(const QSize &pixelSize);
 
     virtual void initialize(QRhi *rhi, QRhiTexture *outputTexture);
     virtual void render(QRhiCommandBuffer *cb);

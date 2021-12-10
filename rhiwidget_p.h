@@ -21,6 +21,7 @@ public:
     bool noSize = false;
     QPlatformBackingStoreRhiConfig config;
     QRhiTexture::Format format = QRhiTexture::RGBA8;
+    QSize explicitSize;
 };
 
 #endif

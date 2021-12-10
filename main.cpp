@@ -1,9 +1,11 @@
 #include <QApplication>
 #include <QVBoxLayout>
+#include <QHBoxLayout>
 #include <QSlider>
 #include <QLineEdit>
 #include <QPushButton>
 #include <QLabel>
+#include <QCheckBox>
 #include <QFileDialog>
 #include "examplewidget.h"
 
@@ -41,10 +43,23 @@ int main(int argc, char **argv)
                 image.save(fd.selectedFiles().first());
         }
     });
+    QHBoxLayout *btnLayout = new QHBoxLayout;
+    btnLayout->addWidget(btn);
+    QCheckBox *cbExplicitSize = new QCheckBox(QLatin1String("Use explicit size"));
+    QObject::connect(cbExplicitSize, &QCheckBox::stateChanged, cbExplicitSize, [cbExplicitSize, rw] {
+        if (cbExplicitSize->isChecked())
+            rw->setExplicitSize(QSize(128, 128));
+        else
+            rw->setExplicitSize(QSize());
+    });
+    btnLayout->addWidget(cbExplicitSize);
 
     layout->addWidget(edit);
-    layout->addWidget(slider);
-    layout->addWidget(btn);
+    QHBoxLayout *sliderLayout = new QHBoxLayout;
+    sliderLayout->addWidget(new QLabel(QLatin1String("Cube rotation")));
+    sliderLayout->addWidget(slider);
+    layout->addLayout(sliderLayout);
+    layout->addLayout(btnLayout);
     layout->addWidget(rw);
 
     rw->setCubeTextureText(edit->text());
