@@ -454,18 +454,24 @@ QImage QRhiWidget::grabTexture()
 
     The implementation should be prepared that both \a rhi and \a outputTexture
     can change between invocations of this function, although this is not
-    always going to happen in practice. For example, when the widget size
-    changes, it is likely that this function is called with the same \a rhi and
-    \a outputTexture as before, but \a outputTexture may have been rebuilt,
-    meaning its \l{QRhiTexture::pixelSize()}{size} and the underlying native
-    texture resource may be different than in the last invocation.
+    always going to happen in practice. When the widget size changes, this
+    function is called with the same \a rhi and \a outputTexture as before, but
+    \a outputTexture may have been rebuilt, meaning its
+    \l{QRhiTexture::pixelSize()}{size} and the underlying native texture
+    resource may be different than in the last invocation.
 
-    \note One special case where the objects will be different is when
-    performing a grabTexture() with a widget that is not yet shown, and then
-    making the widget visible on-screen within a top-level widget. There the
-    grab will happen with a dedicated QRhi that is then replaced with the
-    top-level window's associated QRhi in subsequent initialize() and render()
+    One special case where the objects will be different is when performing a
+    grabTexture() with a widget that is not yet shown, and then making the
+    widget visible on-screen within a top-level widget. There the grab will
+    happen with a dedicated QRhi that is then replaced with the top-level
+    window's associated QRhi in subsequent initialize() and render()
     invocations.
+
+    Another, more common case is when the widget is reparented so that it
+    belongs to a new top-level window. In this case \a rhi and \a outputTexture
+    will definitely be different in the subsequent call to this function. Is is
+    then important that all existing QRhi resources are destroyed because they
+    belong to the previous QRhi that should not be used by the widget anymore.
 
     Implementations will typically create or rebuild a QRhiTextureRenderTarget
     in order to allow the subsequent render() call to render into the texture.
@@ -499,8 +505,7 @@ QImage QRhiWidget::grabTexture()
     \endcode
 
     The above snippet is also prepared for \a rhi and \a outputTexture changing
-    between invocations, although this will only happen in certain situations,
-    such as when grabTexture() is involved before showing the widget.
+    between invocations, via the checks at the beginning of the function.
 
     The created resources are expected to be released in the destructor
     implementation of the subclass. \a rhi and \a outputTexture are not owned
