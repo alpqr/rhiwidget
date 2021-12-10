@@ -22,6 +22,7 @@ public:
     QPlatformBackingStoreRhiConfig config;
     QRhiTexture::Format format = QRhiTexture::RGBA8;
     QSize explicitSize;
+    QBackingStoreRhiSupport::RhiRenderResources offscreenRhiResources;
 };
 
 #endif

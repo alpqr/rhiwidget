@@ -13,6 +13,16 @@ ExampleRhiWidget::ExampleRhiWidget(QWidget *parent, Qt::WindowFlags f)
 
 void ExampleRhiWidget::initialize(QRhi *rhi, QRhiTexture *outputTexture)
 {
+    if (m_rhi != rhi) {
+        m_rt.reset();
+        m_rp.reset();
+        m_ds.reset();
+        scene.vbuf.reset();
+    } else if (m_output != outputTexture) {
+        m_rt.reset();
+        m_rp.reset();
+    }
+
     m_rhi = rhi;
     m_output = outputTexture;
 

@@ -62,6 +62,7 @@ QRhiWidget::~QRhiWidget()
     Q_D(QRhiWidget);
     // rhi resources must be destroyed here, cannot be left to the private dtor
     delete d->t;
+    d->offscreenRhiResources.reset();
 }
 
 /*!
@@ -128,23 +129,33 @@ QPlatformBackingStoreRhiConfig QRhiWidgetPrivate::rhiConfig() const
 
 void QRhiWidgetPrivate::ensureRhi()
 {
-    if (rhi)
-        return;
-
     Q_Q(QRhiWidget);
     // the QRhi and infrastructure belongs to the top-level widget, not to this widget
     QWidget *tlw = q->window();
     QWidgetPrivate *wd = get(tlw);
 
+    QRhi *currentRhi = nullptr;
     if (QWidgetRepaintManager *repaintManager = wd->maybeRepaintManager())
-        rhi = repaintManager->rhi();
+        currentRhi = repaintManager->rhi();
 
-    if (rhi && rhi->backend() != QBackingStoreRhiSupport::apiToRhiBackend(config.api())) {
+    if (currentRhi && currentRhi->backend() != QBackingStoreRhiSupport::apiToRhiBackend(config.api())) {
         qWarning("The top-level window is already using another graphics API for composition, "
                  "'%s' is not compatible with this widget",
-                 rhi->backendName());
+                 currentRhi->backendName());
         return;
     }
+
+    if (currentRhi && rhi && rhi != currentRhi) {
+        // if previously we created our own but now get a QRhi from the
+        // top-level, then drop what we have and start using the top-level's
+        if (rhi == offscreenRhiResources.rhi) {
+            delete t;
+            t = nullptr;
+            offscreenRhiResources.reset();
+        }
+    }
+
+    rhi = currentRhi;
 }
 
 void QRhiWidgetPrivate::ensureTexture()
@@ -367,8 +378,20 @@ QImage QRhiWidget::grab()
 
     d->ensureRhi();
     if (!d->rhi) {
-        // ### this should be supported (widget is never shown -> grab should still work)
-        return QImage();
+        // The widget (and its parent chain, if any) may not be shown at
+        // all, yet one may still want to use it for grabs. This is
+        // ridiculous of course because the rendering infrastructure is
+        // tied to the top-level widget that initializes upon expose, but
+        // it has to be supported.
+        QBackingStoreRhiSupport rhiSupport;
+        rhiSupport.setConfig(d->config);
+        // no window passed in, so no swapchain, but we get a functional QRhi which we own
+        d->offscreenRhiResources = rhiSupport.create();
+        d->rhi = d->offscreenRhiResources.rhi;
+        if (!d->rhi) {
+            qWarning("QRhiWidget: Failed to create dedicated QRhi for grabbing");
+            return QImage();
+        }
     }
 
     const QSize prevSize = d->t ? d->t->pixelSize() : QSize();
@@ -405,15 +428,23 @@ QImage QRhiWidget::grab()
 }
 
 /*!
-    Called when the widget is initialized and every time its size changes.
+    Called when the widget is initialized, when the associated texture's size
+    changes, or when the QRhi and texture change for some reason.
 
     The implementation should be prepared that both \a rhi and \a outputTexture
     can change between invocations of this function, although this is not
-    guaranteed to happen in practice. For example, when the widget size changes,
-    it is likely that this function is called with the same \a rhi and \a
-    outputTexture as before, but \a outputTexture may have been rebuilt,
+    always going to happen in practice. For example, when the widget size
+    changes, it is likely that this function is called with the same \a rhi and
+    \a outputTexture as before, but \a outputTexture may have been rebuilt,
     meaning its \l{QRhiTexture::pixelSize()}{size} and the underlying native
     texture resource may be different than in the last invocation.
+
+    \note One special case where the objects will be different is when
+    performing a grab() with a widget that is not yet shown, and then making
+    the widget visible on-screen within a top-level widget. There the grab will
+    happen with a dedicated QRhi that is then replaced with the top-level
+    window's associated QRhi in subsequent initialize() and render()
+    invocations.
 
     Implementations will typically create or rebuild a QRhiTextureRenderTarget
     in order to allow the subsequent render() call to render into the texture.
@@ -422,6 +453,11 @@ QImage QRhiWidget::grab()
     efficient way for this is the following:
 
     \code
+    if (m_rhi != rhi) {
+        // reset all resources (incl. m_ds, m_rt, m_rp)
+    } else if (m_output != outputTexture) {
+        // reset m_rt and m_rp
+    }
     m_rhi = rhi;
     m_output = outputTexture;
     if (!m_ds) {
@@ -440,6 +476,10 @@ QImage QRhiWidget::grab()
         m_rt->create();
     }
     \endcode
+
+    The above snippet is also prepared for \a rhi and \a outputTexture changing
+    between invocations, although this will only happen in certain situations,
+    such as when grab() is involved before showing the widget.
 
     The created resources are expected to be released in the destructor
     implementation of the subclass. \a rhi and \a outputTexture are not owned

@@ -9,6 +9,8 @@
 #include <QFileDialog>
 #include "examplewidget.h"
 
+static const bool TEST_OFFSCREEN_GRAB = false;
+
 int main(int argc, char **argv)
 {
     qputenv("QSG_INFO", "1");
@@ -63,6 +65,11 @@ int main(int argc, char **argv)
     layout->addWidget(rw);
 
     rw->setCubeTextureText(edit->text());
+
+    if (TEST_OFFSCREEN_GRAB) {
+        rw->resize(320, 200);
+        rw->grab().save("offscreen_grab.png");
+    }
 
     QWidget w;
     w.setLayout(layout);
