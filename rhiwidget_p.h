@@ -3,10 +3,7 @@
 
 #include "rhiwidget.h"
 
-#include <private/qguiapplication_p.h>
-#include <qpa/qplatformintegration.h>
 #include <private/qwidget_p.h>
-#include <private/qwidgetrepaintmanager_p.h>
 #include <private/qbackingstorerhisupport_p.h>
 
 class QRhiWidgetPrivate : public QWidgetPrivate
@@ -17,11 +14,13 @@ public:
     QPlatformBackingStoreRhiConfig rhiConfig() const override;
 
     void ensureRhi();
+    void ensureTexture();
 
     QRhi *rhi = nullptr;
     QRhiTexture *t = nullptr;
     bool noSize = false;
     QPlatformBackingStoreRhiConfig config;
+    QRhiTexture::Format format = QRhiTexture::RGBA8;
 };
 
 #endif

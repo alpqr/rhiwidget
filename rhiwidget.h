@@ -2,11 +2,9 @@
 #define RHIWIDGET_H
 
 #include <QWidget>
+#include <QtGui/private/qrhi_p.h>
 
 class QRhiWidgetPrivate;
-class QRhi;
-class QRhiTexture;
-class QRhiCommandBuffer;
 
 class QRhiWidget : public QWidget
 {
@@ -25,9 +23,12 @@ public:
 
     void setApi(Api api);
     void setDebugLayer(bool enable);
+    void setTextureFormat(QRhiTexture::Format format);
 
     virtual void initialize(QRhi *rhi, QRhiTexture *outputTexture);
     virtual void render(QRhiCommandBuffer *cb);
+
+    QImage grab();
 
 protected:
     void resizeEvent(QResizeEvent *e) override;

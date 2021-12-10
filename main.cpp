@@ -2,11 +2,14 @@
 #include <QVBoxLayout>
 #include <QSlider>
 #include <QLineEdit>
+#include <QPushButton>
 #include <QLabel>
+#include <QFileDialog>
 #include "examplewidget.h"
 
 int main(int argc, char **argv)
 {
+    qputenv("QSG_INFO", "1");
     QApplication app(argc, argv);
 
     QVBoxLayout *layout = new QVBoxLayout;
@@ -25,8 +28,23 @@ int main(int argc, char **argv)
         rw->setCubeRotation(slider->value());
     });
 
+    QPushButton *btn = new QPushButton(QLatin1String("Grab to image"));
+    QObject::connect(btn, &QPushButton::clicked, btn, [rw] {
+        QImage image = rw->grab();
+        qDebug() << image;
+        if (!image.isNull()) {
+            QFileDialog fd(rw->parentWidget());
+            fd.setAcceptMode(QFileDialog::AcceptSave);
+            fd.setDefaultSuffix("png");
+            fd.selectFile("test.png");
+            if (fd.exec() == QDialog::Accepted)
+                image.save(fd.selectedFiles().first());
+        }
+    });
+
     layout->addWidget(edit);
     layout->addWidget(slider);
+    layout->addWidget(btn);
     layout->addWidget(rw);
 
     rw->setCubeTextureText(edit->text());

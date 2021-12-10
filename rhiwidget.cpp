@@ -1,5 +1,9 @@
 #include "rhiwidget_p.h"
 
+#include <private/qguiapplication_p.h>
+#include <qpa/qplatformintegration.h>
+#include <private/qwidgetrepaintmanager_p.h>
+
 /*!
   \class QRhiWidget
   \inmodule QtWidgets
@@ -59,19 +63,14 @@ void QRhiWidget::resizeEvent(QResizeEvent *e)
     d->noSize = false;
 
     d->ensureRhi();
-    if (!d->rhi)
+    if (!d->rhi) {
+        qWarning("QRhiWidget: No QRhi");
         return;
+    }
 
-    const QSize newSize = size() * devicePixelRatio();
-    if (!d->t) {
-        d->t = d->rhi->newTexture(QRhiTexture::RGBA8, newSize, 1, QRhiTexture::RenderTarget);
-        if (!d->t->create())
-            qWarning("Failed to create backing texture for QRhiWidget");
-    }
-    if (d->t->pixelSize() != newSize) {
-        d->t->setPixelSize(newSize);
-        d->t->create();
-    }
+    d->ensureTexture();
+    if (!d->t)
+        return;
 
     initialize(d->rhi, d->t);
 
@@ -91,7 +90,7 @@ void QRhiWidget::resizeEvent(QResizeEvent *e)
 void QRhiWidget::paintEvent(QPaintEvent *)
 {
     Q_D(QRhiWidget);
-    if (updatesEnabled() && d->rhi && !d->noSize) {
+    if (updatesEnabled() && d->rhi && d->t && !d->noSize) {
         QRhiCommandBuffer *cb = nullptr;
         d->rhi->beginOffscreenFrame(&cb);
         render(cb);
@@ -117,25 +116,45 @@ void QRhiWidgetPrivate::ensureRhi()
     if (QWidgetRepaintManager *repaintManager = wd->maybeRepaintManager())
         rhi = repaintManager->rhi();
 
-    // a real widget would need to check this too, in case another
-    // render-to-texture widget has already set things up with another API
     if (rhi && rhi->backend() != QBackingStoreRhiSupport::apiToRhiBackend(config.api())) {
         qWarning("The top-level window is already using another graphics API for composition, "
                  "'%s' is not compatible with this widget",
                  rhi->backendName());
         return;
     }
+}
 
-    if (!rhi)
-        qWarning("No QRhi");
+void QRhiWidgetPrivate::ensureTexture()
+{
+    Q_Q(QRhiWidget);
+    const QSize newSize = q->size() * q->devicePixelRatio();
+    if (!t) {
+        if (!rhi->isTextureFormatSupported(format))
+            qWarning("QRhiWidget: The requested texture format is not supported by the graphics API implementation");
+        t = rhi->newTexture(format, newSize, 1, QRhiTexture::RenderTarget | QRhiTexture::UsedAsTransferSource);
+        if (!t->create()) {
+            qWarning("Failed to create backing texture for QRhiWidget");
+            delete t;
+            t = nullptr;
+            return;
+        }
+    }
+    if (t->pixelSize() != newSize) {
+        t->setPixelSize(newSize);
+        if (!t->create())
+            qWarning("Failed to rebuild texture for QRhiWidget after resizing");
+    }
 }
 
 /*!
     Sets the graphics API and QRhi backend to use to \a api.
 
-    This function must be called early enough, before the widget is added to a
-    widget hierarchy and displayed on screen. For example, aim to call the
-    function for the subclass constructor.
+    \note This function must be called early enough, before the widget is added
+    to a widget hierarchy and displayed on screen. For example, aim to call the
+    function for the subclass constructor. If called too late, the function
+    will have no effect.
+
+    \sa setTextureFormat(), setDebugLayer()
  */
 void QRhiWidget::setApi(Api api)
 {
@@ -165,11 +184,103 @@ void QRhiWidget::setApi(Api api)
     when \a enable is true.
 
     Applicable for Vulkan and Direct 3D.
+
+    \note This function must be called early enough, before the widget is added
+    to a widget hierarchy and displayed on screen. For example, aim to call the
+    function for the subclass constructor. If called too late, the function
+    will have no effect.
+
+    \sa setApi()
  */
 void QRhiWidget::setDebugLayer(bool enable)
 {
     Q_D(QRhiWidget);
     d->config.setDebugLayer(enable);
+}
+
+/*!
+    Sets the associated texture's \a format.
+
+    The default is QRhiTexture::RGBA8.
+
+    \note This function must be called early enough, before the widget is added
+    to a widget hierarchy and displayed on screen. For example, aim to call the
+    function for the subclass constructor. If called too late, the function
+    will have no effect.
+
+    \sa setApi()
+ */
+void QRhiWidget::setTextureFormat(QRhiTexture::Format format)
+{
+    Q_D(QRhiWidget);
+    d->format = format;
+}
+
+/*!
+    Renders a new frame, reads the contents of the texture back, and returns it
+    as a QImage.
+
+    When an error occurs, a null QImage is returned.
+
+    \note This function only supports reading back QRhiTexture::RGBA8 textures
+    at the moment. For other formats, the implementer of render() should
+    implement their own readback logic as they see fit.
+
+    The returned QImage will have a format of QImage::Format_RGBA8888.
+    QRhiWidget does not know the renderer's approach to blending and
+    composition, and therefore cannot know if the output has alpha
+    premultiplied.
+
+    \sa setTextureFormat()
+ */
+QImage QRhiWidget::grab()
+{
+    Q_D(QRhiWidget);
+    if (d->noSize)
+        return QImage();
+
+    if (d->format != QRhiTexture::RGBA8) {
+        qWarning("QRhiWidget::grab() only supports RGBA8 textures");
+        return QImage();
+    }
+
+    d->ensureRhi();
+    if (!d->rhi) {
+        // ### this should be supported (widget is never shown -> grab should still work)
+        return QImage();
+    }
+
+    const QSize prevSize = d->t ? d->t->pixelSize() : QSize();
+    d->ensureTexture();
+    if (!d->t)
+        return QImage();
+    if (d->t->pixelSize() != prevSize)
+        initialize(d->rhi, d->t);
+
+    QRhiReadbackResult readResult;
+    bool readCompleted = false;
+    readResult.completed = [&readCompleted] { readCompleted = true; };
+
+    QRhiCommandBuffer *cb = nullptr;
+    d->rhi->beginOffscreenFrame(&cb);
+    render(cb);
+    QRhiResourceUpdateBatch *readbackBatch = d->rhi->nextResourceUpdateBatch();
+    readbackBatch->readBackTexture(d->t, &readResult);
+    cb->resourceUpdate(readbackBatch);
+    d->rhi->endOffscreenFrame();
+
+    if (readCompleted) {
+        QImage wrapperImage(reinterpret_cast<const uchar *>(readResult.data.constData()),
+                            readResult.pixelSize.width(), readResult.pixelSize.height(),
+                            QImage::Format_RGBA8888);
+        QImage result = wrapperImage.copy();
+        result.setDevicePixelRatio(devicePixelRatio());
+        return result;
+    } else {
+        Q_UNREACHABLE();
+    }
+
+    return QImage();
 }
 
 /*!
