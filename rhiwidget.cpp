@@ -363,14 +363,14 @@ void QRhiWidget::setExplicitSize(const QSize &pixelSize)
 
     \sa setTextureFormat()
  */
-QImage QRhiWidget::grab()
+QImage QRhiWidget::grabTexture()
 {
     Q_D(QRhiWidget);
     if (d->noSize)
         return QImage();
 
     if (d->format != QRhiTexture::RGBA8) {
-        qWarning("QRhiWidget::grab() only supports RGBA8 textures");
+        qWarning("QRhiWidget::grabTexture() only supports RGBA8 textures");
         return QImage();
     }
 
@@ -438,10 +438,10 @@ QImage QRhiWidget::grab()
     texture resource may be different than in the last invocation.
 
     \note One special case where the objects will be different is when
-    performing a grab() with a widget that is not yet shown, and then making
-    the widget visible on-screen within a top-level widget. There the grab will
-    happen with a dedicated QRhi that is then replaced with the top-level
-    window's associated QRhi in subsequent initialize() and render()
+    performing a grabTexture() with a widget that is not yet shown, and then
+    making the widget visible on-screen within a top-level widget. There the
+    grab will happen with a dedicated QRhi that is then replaced with the
+    top-level window's associated QRhi in subsequent initialize() and render()
     invocations.
 
     Implementations will typically create or rebuild a QRhiTextureRenderTarget
@@ -477,7 +477,7 @@ QImage QRhiWidget::grab()
 
     The above snippet is also prepared for \a rhi and \a outputTexture changing
     between invocations, although this will only happen in certain situations,
-    such as when grab() is involved before showing the widget.
+    such as when grabTexture() is involved before showing the widget.
 
     The created resources are expected to be released in the destructor
     implementation of the subclass. \a rhi and \a outputTexture are not owned

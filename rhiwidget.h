@@ -39,7 +39,7 @@ public:
     virtual void initialize(QRhi *rhi, QRhiTexture *outputTexture);
     virtual void render(QRhiCommandBuffer *cb);
 
-    QImage grab();
+    QImage grabTexture();
 
 Q_SIGNALS:
     void explicitSizeChanged(const QSize &pixelSize);

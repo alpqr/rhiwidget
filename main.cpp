@@ -34,7 +34,7 @@ int main(int argc, char **argv)
 
     QPushButton *btn = new QPushButton(QLatin1String("Grab to image"));
     QObject::connect(btn, &QPushButton::clicked, btn, [rw] {
-        QImage image = rw->grab();
+        QImage image = rw->grabTexture();
         qDebug() << image;
         if (!image.isNull()) {
             QFileDialog fd(rw->parentWidget());
@@ -68,7 +68,7 @@ int main(int argc, char **argv)
 
     if (TEST_OFFSCREEN_GRAB) {
         rw->resize(320, 200);
-        rw->grab().save("offscreen_grab.png");
+        rw->grabTexture().save("offscreen_grab.png");
     }
 
     QWidget w;
