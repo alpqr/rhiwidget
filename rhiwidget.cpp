@@ -314,34 +314,32 @@ void QRhiWidget::setTextureFormat(QRhiTexture::Format format)
 }
 
 /*!
-    \return the currently set texture size, in pixels.
+    \property QRhiWidget::explicitSize
 
-    The default value is a null (default constructed) QSize, which means that
-    the texture follows the widget's size.
+    The fixed size (in pixels) of the QRhiWidget's associated texture.
 
-    \sa setExplicitSize()
+    Only relevant when a fixed texture size is desired that does not depend on
+    the widget's size.
+
+    By default the value is a null QSize. A null or empty QSize means that the
+    texture's size follows the QRhiWidget's size. (\c{texture size} = \c{widget
+    size} * \c{device pixel ratio}).
  */
+
 QSize QRhiWidget::explicitSize() const
 {
     Q_D(const QRhiWidget);
     return d->explicitSize;
 }
 
-/*!
-    Sets a \a pixelSize as the size of the QRhiWidget's associated texture.
-
-    By default the value is a null QSize.
-
-    A null or empty QSize means that the texture's size follows the
-    QRhiWidget's size. (texture size = widget size * device pixel ratio).
-
-    \sa explicitSize()
- */
 void QRhiWidget::setExplicitSize(const QSize &pixelSize)
 {
     Q_D(QRhiWidget);
-    d->explicitSize = pixelSize;
-    update();
+    if (d->explicitSize != pixelSize) {
+        d->explicitSize = pixelSize;
+        emit explicitSizeChanged(pixelSize);
+        update();
+    }
 }
 
 /*!

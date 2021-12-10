@@ -8,7 +8,10 @@ class QRhiWidgetPrivate;
 
 class QRhiWidget : public QWidget
 {
+    Q_OBJECT
     Q_DECLARE_PRIVATE(QRhiWidget)
+    Q_PROPERTY(QSize explicitSize READ explicitSize WRITE setExplicitSize NOTIFY explicitSizeChanged)
+
 public:
     QRhiWidget(QWidget *parent = nullptr, Qt::WindowFlags f = {});
     ~QRhiWidget();
@@ -37,6 +40,9 @@ public:
     virtual void render(QRhiCommandBuffer *cb);
 
     QImage grab();
+
+Q_SIGNALS:
+    void explicitSizeChanged(const QSize &pixelSize);
 
 protected:
     void resizeEvent(QResizeEvent *e) override;
